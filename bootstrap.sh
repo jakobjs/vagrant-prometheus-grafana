@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 sudo apt-get update
 
-# create downloads directory so that we can download all the packages
-# which are required during provisioning process
-mkdir /home/vagrant/Downloads
-cd /home/vagrant/Downloads
+wget https://github.com/smallstep/cli/releases/download/v0.15.12/step-cli_0.15.12_amd64.deb
+sudo dpkg -i step-cli_0.15.12_amd64.deb
 
 # download prometheus installation files
 wget --quiet https://github.com/prometheus/prometheus/releases/download/v2.25.2/prometheus-2.25.2.linux-amd64.tar.gz
@@ -15,7 +13,7 @@ mkdir -p /home/vagrant/Prometheus/server
 cd /home/vagrant/Prometheus/server
 
 # Extract files
-tar -xvzf /home/vagrant/Downloads/prometheus-2.25.2.linux-amd64.tar.gz
+tar -xvzf /home/vagrant/prometheus-2.25.2.linux-amd64.tar.gz
 
 cd prometheus-2.25.2.linux-amd64
 
@@ -27,10 +25,10 @@ mkdir -p /home/vagrant/Prometheus/node_exporter
 cd /home/vagrant/Prometheus/node_exporter
 
 # download node_exporter
-wget --quiet https://github.com/prometheus/node_exporter/releases/download/v1.1.2/node_exporter-1.1.2.linux-amd64.tar.gz -O /home/vagrant/Downloads/node_exporter-1.1.2.linux-amd64.tar.gz
+wget --quiet https://github.com/prometheus/node_exporter/releases/download/v1.1.2/node_exporter-1.1.2.linux-amd64.tar.gz -O /home/vagrant/node_exporter-1.1.2.linux-amd64.tar.gz
 
 # extract node_exporter
-tar -xvzf /home/vagrant/Downloads/node_exporter-1.1.2.linux-amd64.tar.gz
+tar -xvzf /home/vagrant/node_exporter-1.1.2.linux-amd64.tar.gz
 
 # create a symbolic link of node_exporter
 sudo ln -s /home/vagrant/Prometheus/node_exporter/node_exporter-1.1.2.linux-amd64/node_exporter /usr/local/bin
@@ -38,14 +36,40 @@ sudo ln -s /home/vagrant/Prometheus/node_exporter/node_exporter-1.1.2.linux-amd6
 cat <<EOF > /lib/systemd/system/node_exporter.service
 [Unit]
 Description=node_exporter
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/node_exporter
+ExecStart=/usr/local/bin/node_exporter --web.listen-address=0.0.0.0:9100 --log.level=info --collector.textfile.directory=/tmp/textfile-metrics --web.config="/tmp/web-config.yml"
+
+SyslogIdentifier=prometheus_node_exporter
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+cat <<WEBCONFIG > /var/lib/prometheus_node_exporter/web-config.yml
+tls_server_config:
+  # Certificate and key files for server to use to authenticate to client.
+  cert_file: /var/local/postgres_certs/cert.pem
+  key_file: /var/local/postgres_certs/key.pem
+
+  # Server policy for client authentication. Maps to ClientAuth Policies.
+  # For more detail on clientAuth options: [ClientAuthType](https://golang.org/pkg/crypto/tls/#ClientAuthType)
+  #client_auth_type: RequireAndVerifyClientCert
+  client_auth_type: NoClientCert
+
+  # CA certificate for client certificate authentication to the server.
+  #client_ca_file: /var/local/postgres_certs/rp.netapp.azure.us.ca_bundle.pem
+
+  # Minimum TLS version that is acceptable.
+  min_version: "TLS12"
+
+  # Maximum TLS version that is acceptable.
+  max_version: "TLS13"
+WEBCONFIG
 
 sudo cp /lib/systemd/system/node_exporter.service /etc/systemd/system/node_exporter.service
 sudo chmod 644 /etc/systemd/system/node_exporter.service
@@ -79,12 +103,12 @@ EOF
 nohup ./prometheus > prometheus.log 2>&1 &
 
 # download grafana
-wget --quiet https://dl.grafana.com/oss/release/grafana_6.7.0_amd64.deb -O /home/vagrant/Downloads/grafana_6.7.0_amd64.deb
+wget --quiet https://dl.grafana.com/oss/release/grafana_6.7.0_amd64.deb -O /home/vagrant/grafana_6.7.0_amd64.deb
 
 sudo apt-get install -y adduser libfontconfig
 
 # install grafana 
-sudo dpkg -i /home/vagrant/Downloads/grafana_6.7.0_amd64.deb
+sudo dpkg -i /home/vagrant/grafana_6.7.0_amd64.deb
 
 # start grafana service 
 sudo service grafana-server start
